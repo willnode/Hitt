@@ -43,7 +43,7 @@ public class BezzerkInventory : EditorWindow
     void SelectionChange()
     {
         var sel = Selection.activeGameObject;
-        if (sel && sel.GetComponent<BezzerkItem>())
+        if (sel && PrefabUtility.GetPrefabType(sel) != PrefabType.Prefab && sel.GetComponent<BezzerkItem>())
         {
             active = sel.GetComponent<BezzerkItem>();
             root = active.root;
@@ -108,47 +108,71 @@ public class BezzerkInventory : EditorWindow
 
     void Delete ()
     {
-        active.AssignBezzerk(activeEntrance, null);
+
+        if (active.parent)
+        {
+            var p = active.parent;
+            p.AssignBezzerk(active.parentEntrance, null);
+            Selection.activeGameObject = p.gameObject;
+        }            
 
     }
 
     void MoveDown ()
     {
         if (!active.parent) { MoveRight(); return; }
-
-        BezzerkItem g = active;
-
-        var p = active.parent.children;
-
-        do
-        {
-            var idx = g.parentEntrance + 1;
-            if (idx >= p.Length)
-                idx = 0;
-            g = p[idx];
-        } while (g);       
         
-        Selection.activeGameObject = g.gameObject;
+        activeEntrance++;
 
+        if (activeEntrance >= active.entrances.Length)
+        {
+            BezzerkItem g = active;
+
+            do
+            {
+                if (!g.parent) break;
+                var idx = g.parentEntrance + 1;
+                if (idx >= g.parent.children.Length)
+                {
+                    g = g.parent;
+                    idx = 0;
+                }
+                g = g.parent.children[idx];
+            } while (g);
+
+            activeEntrance = 0;
+            Selection.activeGameObject = g.gameObject;
+
+        }
+        
     }
 
     void MoveUp()
     {
         if (!active.parent) { return; }
+        
+        activeEntrance--;
 
-        BezzerkItem g = active;
-
-        var p = active.parent.children;
-
-        do
+        if (activeEntrance < 0)
         {
-            var idx = g.parentEntrance - 1;
-            if (idx < 0)
-                idx = p.Length - 1;
-            g = p[idx];
-        } while (g);
+            BezzerkItem g = active;
 
-        Selection.activeGameObject = g.gameObject;
+            do
+            {
+                if (!g.parent) break;
+                var idx = g.parentEntrance - 1;
+                if (idx < 0)
+                {
+                    g = g.parent;
+                    idx = g.parent.children.Length - 1;
+                }
+                g = g.parent.children[idx];
+            } while (g);
+
+            activeEntrance = g.entrances.Length - 1;
+            Selection.activeGameObject = g.gameObject;
+
+        }
     }
 
     void MoveRight ()
