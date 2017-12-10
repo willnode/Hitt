@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-namespace Assets.Plugins.Bezzerk
+namespace Assets.Plugins.Hitt
 {
-    class BezzerkObject
+    class HittScalableItem
     {
     }
 }

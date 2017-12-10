@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 [DisallowMultipleComponent]
-public class BezzerkItem : MonoBehaviour
+public class HittItem : MonoBehaviour
 {
     /// <summary>
     /// Keycode to insert when Interactive Playground is used (prefab only)
@@ -24,12 +24,12 @@ public class BezzerkItem : MonoBehaviour
     /// <summary>
     /// List of children for each entrance (configurable on scene game object only)
     /// </summary>
-    public BezzerkItem[] children = new BezzerkItem[0];
+    public HittItem[] children = new HittItem[0];
 
     /// <summary>
     /// Parent of this item (auto-configured. Do not set)
     /// </summary>
-    public BezzerkItem parent;
+    public HittItem parent;
 
     public int parentEntrance { get { return parent ? Array.IndexOf(parent.children, this) : -1; } }
 
@@ -45,55 +45,10 @@ public class BezzerkItem : MonoBehaviour
         }
     }
 
-    protected virtual void DrawWireHierarchy(bool recursive = false)
-    {
-        // the center
-        Gizmos.matrix = transform.localToWorldMatrix;
-        Gizmos.color = Color.white;
-        Gizmos.DrawCube(-center, Vector3.one * 0.1f);
-
-        var count = Math.Min(children.Length, entrances.Length);
-
-        // the line
-        for (int i = 0; i < entrances.Length; i++)
-            Gizmos.DrawLine(entrances[i].position, center);
-
-        // children validity
-        for (int i = 0; i < children.Length; i++)
-            if (children[i])
-                children[i].parent = this;
-
-        // the childs recursive
-        if (recursive)
-            for (int i = 0; i < count; i++)
-                if (children[i])
-                    children[i].DrawWireHierarchy(true);
-
-
-        // the gates
-        var enter = parentEntrance;
-
-        if (!root.template) return;
-
-        var eligb = root.template.entrances.Length;
-
-        for (int i = 0; i < count; i++)
-        {
-            var e = entrances[i];
-            if (i != enter && children[i] && e.tag < eligb)
-                root.template.entrances[e.tag].DrawWire(e.position, e.rotation);
-        }
-    }
-
-    protected virtual void OnDrawGizmosSelected()
-    {
-        DrawWireHierarchy();
-    }
-
     [NonSerialized]
-    Bezzerk _root;
+    Hitt _root;
 
-    public Bezzerk root { get { return _root ? _root : (_root = GetComponent<Bezzerk>() ?? parent.root); } }
+    public Hitt root { get { return _root ? _root : (_root = GetComponent<Hitt>() ?? (parent ? parent.root : null)); } }
 
     static Quaternion Conjugate(Quaternion t)
     {
@@ -115,12 +70,15 @@ public class BezzerkItem : MonoBehaviour
         for (int i = 0; i < count; i++)
         {
             if (children[i])
+            {
+                children[i].parent = this;
                 children[i].Synchronize();
+            }
         }
 
     }
 
-    public virtual bool IsReplaceableWith(BezzerkItem other, out Quaternion rotation)
+    public virtual bool IsReplaceableWith(HittItem other, out Quaternion rotation)
     {
         rotation = Quaternion.identity;
 
@@ -163,7 +121,7 @@ public class BezzerkItem : MonoBehaviour
         return false;
     }
 
-    public void AssignBezzerk (int entrance, GameObject g)
+    public void AssignHitt(int entrance, GameObject g)
     {
 
         // validate
@@ -186,7 +144,7 @@ public class BezzerkItem : MonoBehaviour
         // assign to new one
         if (g)
         {
-            var bz = g.GetComponent<BezzerkItem>();
+            var bz = g.GetComponent<HittItem>();
             if (bz)
             {
                 children[entrance] = bz;

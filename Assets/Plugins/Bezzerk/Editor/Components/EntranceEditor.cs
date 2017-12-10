@@ -5,7 +5,7 @@ using System.Text;
 using UnityEditor;
 using UnityEngine;
 
-namespace Assets.Plugins.Bezzerk.Editor
+namespace Assets.Plugins.Hitt.Editor
 {
     [CustomPropertyDrawer(typeof(Entrance))]
     public class EntranceEditor : PropertyDrawer

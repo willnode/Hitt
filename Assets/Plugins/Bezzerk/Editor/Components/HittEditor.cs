@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
 
-[CustomEditor(typeof(Bezzerk))]
-public class BezzerkEditor : BezzerkItemEditor {
+[CustomEditor(typeof(Hitt))]
+public class HittEditor : HittItemEditor {
 
     SerializedProperty template;
 
