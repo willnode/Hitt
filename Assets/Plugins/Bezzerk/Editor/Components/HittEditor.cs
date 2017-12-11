@@ -1,28 +1,28 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
-using UnityEditor;
+﻿//using System.Collections;
+//using System.Collections.Generic;
+//using UnityEngine;
+//using UnityEditor;
 
-[CustomEditor(typeof(Hitt))]
-public class HittEditor : HittItemEditor {
+//[CustomEditor(typeof(Hitt))]
+//public class HittEditor : HittItemEditor {
 
-    SerializedProperty template;
+//    SerializedProperty template;
 
-    protected override void OnEnable ()
-    {
-        template = serializedObject.FindProperty("template");
-        base.OnEnable();
+//    protected override void OnEnable ()
+//    {
+//        template = serializedObject.FindProperty("template");
+//        base.OnEnable();
        
-    }
-    public override void OnInspectorGUI()
-    {
-        serializedObject.Update();
-        EditorGUILayout.PropertyField(template);
-        serializedObject.ApplyModifiedProperties();
+//    }
+//    public override void OnInspectorGUI()
+//    {
+//        serializedObject.Update();
+//        EditorGUILayout.PropertyField(template);
+//        serializedObject.ApplyModifiedProperties();
 
-        EditorGUILayout.Space();
+//        EditorGUILayout.Space();
         
-        base.OnInspectorGUI();
+//        base.OnInspectorGUI();
         
-    }
-}
+//    }
+//}

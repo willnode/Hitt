@@ -44,6 +44,9 @@ public class HittInventory : EditorWindow
 
         public static GUIContent questionNoHitt = new GUIContent("??", "This object seems does not have HittItem attached");
 
+        /// <summary>
+        /// Make grid via GUILayout
+        /// </summary>
         public static void MakeGrid(Vector2 itemSize, int count, Action<Rect, int> callback)
         {
             var width = EditorGUIUtility.currentViewWidth - 17;
@@ -76,6 +79,11 @@ public class HittInventory : EditorWindow
 
     static Hitt root { get { return HittSceneInteractive.singleton.root; } }
 
+    static GameObject activeObject { get { return HittSceneInteractive.singleton.activeObject; } }
+
+    static int activeEntrance { get { return HittSceneInteractive.singleton.activeEntrance; } set { HittSceneInteractive.singleton.activeEntrance = value; } }
+
+
     [MenuItem("Window/Hitt Inventory")]
     public static void ShowHittInventory()
     {
@@ -101,7 +109,7 @@ public class HittInventory : EditorWindow
     void SelectionChange()
     {
         if (template)
-            activeEntrance = Mathf.Clamp(activeEntrance, 0, template.entrances.Length - 1);
+            activeEntrance = Mathf.Clamp(activeEntrance, 0, template.gates.Length - 1);
         Repaint();
     }
 
@@ -111,7 +119,6 @@ public class HittInventory : EditorWindow
     Vector2 scroll;
     void OnGUI()
     {
-        scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.ExpandHeight(true));
 
         EditorGUILayout.BeginHorizontal();
         EditorGUILayout.ObjectField(root, typeof(Hitt), true);
@@ -126,7 +133,13 @@ public class HittInventory : EditorWindow
                 return;
             }
         }
+        EditorGUI.BeginDisabledGroup(root == null);
+        if (GUILayout.Button("Sync", EditorStyles.miniButton, GUILayout.Width(100)))
+            template.Synchronize(root.transform);
+        EditorGUI.EndDisabledGroup();
         EditorGUILayout.EndHorizontal();
+
+        scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.ExpandHeight(true));
         {
             EditorGUILayout.BeginHorizontal();
             for (int i = 0; i < Styles.tabContent.Length; i++)
@@ -201,36 +214,58 @@ public class HittInventory : EditorWindow
         {
 
             var g = template.items[i];
-            if (!g)
-                return;
 
             if (r.Contains(ms))
             {
+                if (ev.type == EventType.DragPerform || ev.type == EventType.DragUpdated)
+                {
+                    var obj = HittUtility.GetPrefabOf(DragAndDrop.objectReferences.FirstOrDefault() as GameObject);
+                    if (obj && !g.prefab && !template.objectIndex.ContainsKey(obj))
+                    {
+                        DragAndDrop.visualMode = DragAndDropVisualMode.Link;
+                        if (ev.type == EventType.DragPerform)
+                        {
+                            g.prefab = obj;
+                            template.Populate();
+                            DragAndDrop.AcceptDrag();
+                        }
+                        ev.Use();
+                    }
+                }
                 if (ev.type == EventType.MouseDown)
                 {
-                    if (ev.clickCount >= 2)
-                         Selection.activeObject = g;
-                    else
+                    activeItem = i;
+                    if (g.prefab)
                     {
-                        activeItem = i;
-                        DragAndDrop.PrepareStartDrag();
-                        DragAndDrop.objectReferences = new UnityEngine.Object[] { g };
-                        DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
-                        DragAndDrop.StartDrag("Make Prefab");
+                        if (ev.clickCount >= 2)
+                            EditorGUIUtility.PingObject(g.prefab);
+                        else
+                        {
+                            DragAndDrop.PrepareStartDrag();
+                            DragAndDrop.objectReferences = new UnityEngine.Object[] { g.prefab };
+                            DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
+                            DragAndDrop.StartDrag("Make Prefab");
+                        }
                     }
                 }
             }
 
             if (ev.type == EventType.Repaint)
             {
-                GUI.Label(r, new GUIContent(AssetPreview.GetAssetPreview(g), g.name), Styles.labelThumb);
-                if (activeItem == i)
-                    GUI.Label(r, g.name, Styles.labelThumbName);
-                var gi = g.GetComponent<HittItem>();
-                if (!gi)
-                    GUI.Label(r, Styles.questionNoHitt, Styles.labelThumbQuestion);
-                else if (gi.key != KeyCode.None)
-                    GUI.Label(r, gi.key.ToString(), Styles.labelThumbKey);
+                if (g.prefab)
+                {
+                    GUI.Label(r, new GUIContent(AssetPreview.GetAssetPreview(g.prefab), g.name), Styles.labelThumb);
+
+                    if (activeItem == i)
+                        GUI.Label(r, g.name, Styles.labelThumbName);
+                    if (g.key != KeyCode.None)
+                        GUI.Label(r, g.key.ToString(), Styles.labelThumbKey);
+                }
+                else
+                {
+                    GUI.Box(r, Texture2D.whiteTexture);
+                    GUI.Label(r, "+", Styles.labelStyles[2]);
+                }
             }
         });
     }
@@ -246,62 +281,68 @@ public class HittInventory : EditorWindow
 
     #region Entrance
 
-    int activeEntrance;
-
     void EntranceGUI()
     {
         var ev = Event.current;
         var ms = ev.mousePosition;
+        GateTags e = null;
+
         EditorGUILayout.Space();
 
-        if (activeEntrance >= 0)
+        EditorGUILayout.BeginHorizontal();
+        EditorGUI.BeginChangeCheck();
+
+        if (template.gates.Length > 0)
         {
-            var e = template.entrances[activeEntrance];
-            EditorGUILayout.BeginHorizontal();
+            e = template.gates[HittUtility.Clamp(template.gates, activeEntrance)];
             e.name = EditorGUILayout.TextField(e.name);
-            EditorGUI.BeginChangeCheck();
             e.color = EditorGUILayout.ColorField(e.color);
             e.size = EditorGUILayout.Vector3Field(GUIContent.none, e.size);
-
-            if (GUILayout.Button("+", GUILayout.Width(50)))
-            {
-                Undo.RecordObject(template, "Add new Entrance Template");
-                ArrayUtility.Add(ref template.entrances, e.Clone());
-            }
-
-            if (GUILayout.Button("-", GUILayout.Width(50)) && template.entrances.Length > 1)
-            {
-                Undo.RecordObject(template, "Delete Entrance Template");
-                ArrayUtility.RemoveAt(ref template.entrances, activeEntrance);
-                activeEntrance--;
-            }
-
-            if (EditorGUI.EndChangeCheck())
-                SceneView.RepaintAll();
-            EditorGUILayout.EndHorizontal();
         }
 
-        Styles.MakeGrid(new Vector2(150, 50), template.entrances.Length, delegate (Rect r, int i)
+        if (GUILayout.Button("+", GUILayout.Width(50)))
         {
-            var g = template.entrances[i];
+            Undo.RecordObject(template, "Add new Entrance Template");
+            ArrayUtility.Add(ref template.gates, e == null ? new GateTags() : e.Clone());
+        }
+
+        if (GUILayout.Button("-", GUILayout.Width(50)) && template.gates.Length > 1)
+        {
+            Undo.RecordObject(template, "Delete Entrance Template");
+            ArrayUtility.RemoveAt(ref template.gates, activeEntrance);
+            activeEntrance--;
+        }
+
+        if (EditorGUI.EndChangeCheck())
+            SceneView.RepaintAll();
+        EditorGUILayout.EndHorizontal();
+
+        Styles.MakeGrid(new Vector2(150, 50), template.gates.Length, delegate (Rect r, int i)
+        {
+            var g = template.gates[i];
             var c = GUI.color;
-            GUI.color = g.color;
-            GUI.Box(r, Texture2D.whiteTexture);
-            GUI.color = c;
-            GUI.Label(r, g.name, Styles.labelStyles[(Styles.IsDark(g.color) ? 1 : 0) + (activeEntrance == i ? 2 : 0)]);
 
-
-            if (active && r.Contains(ms))
+            if (ev.type == EventType.Repaint)
             {
-                if (ev.type == EventType.MouseDown)
+                GUI.color = g.color;
+                GUI.Box(r, Texture2D.whiteTexture);
+                GUI.color = c;
+                GUI.Label(r, g.name, Styles.labelStyles[(Styles.IsDark(g.color) ? 1 : 0) + (activeEntrance == i ? 2 : 0)]);
+            }
+
+            if (ev.type == EventType.MouseDown && r.Contains(ms))
+            {
+                activeEntrance = i;
+                if (active != null)
                 {
-                    activeEntrance = i;
                     DragAndDrop.PrepareStartDrag();
                     DragAndDrop.objectReferences = new UnityEngine.Object[] { template };
                     DragAndDrop.SetGenericData("MittEntrance", g);
                     DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
                     DragAndDrop.StartDrag("Make Prefab");
                 }
+                else
+                    Repaint();
             }
         });
     }

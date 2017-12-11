@@ -13,26 +13,31 @@ public class HittSceneInteractive : ScriptableObject
     static public HittSceneInteractive singleton;
 
     public Hitt root;
-    public HittItem active;
-    public int activeEntrance;
     public HittTemplate template;
+
+    [NonSerialized]
+    public HittItem active;
+    [NonSerialized]
+    public GameObject activeObject;
+
+    public int activeEntrance;
 
     static HittSceneInteractive()
     {
         EditorApplication.delayCall += delegate ()
         {
             singleton = Resources.FindObjectsOfTypeAll<HittSceneInteractive>().FirstOrDefault();
+
             if (!singleton)
             {
+                // this will create once per editor lifetime
                 singleton = CreateInstance<HittSceneInteractive>();
                 singleton.hideFlags = HideFlags.DontSave;
-                Debug.Log("Create new");
             }
-            else
-                Debug.Log("restore");
 
             SceneView.onSceneGUIDelegate += singleton.OnSceneGUI;
             Selection.selectionChanged += singleton.SelectionChanged;
+            Hitt.updateFeed += singleton.SelectionChanged;
         };
     }
 
@@ -46,45 +51,47 @@ public class HittSceneInteractive : ScriptableObject
 
     void SelectionChanged()
     {
-        var sel = Selection.activeGameObject;
-        if (sel && PrefabUtility.GetPrefabType(sel) != PrefabType.Prefab && sel.GetComponent<HittItem>())
+        activeObject = Selection.activeGameObject;
+
+        if (activeObject && template && PrefabUtility.GetPrefabType(activeObject) != PrefabType.Prefab)
         {
-            active = sel.GetComponent<HittItem>();
-            root = active.root;
+            active = template.GetItemOf(activeObject);
 
-            if (root)
-            {
-                root.Synchronize();
-                if (!template)
-                    template = root.template;
-            }
-            if (template)
-                template.PopulateIndex();
+            root = activeObject.GetComponentInParent<Hitt>();
 
-            activeEntrance = Mathf.Clamp(activeEntrance, 0, active.entrances.Length);
+            if (active != null)
+                activeEntrance = Mathf.Clamp(activeEntrance, 0, active.entrances.Length);
         }
         else
+        {
+            active = null;
+
             root = null;
+        }
     }
 
     void OnSceneGUI(SceneView view)
     {
-        if (active)
+        if (active != null)
         {
             if (root)
             {
-                if (template && Event.current.type == EventType.KeyDown)
-                    InteractivePlayground(Event.current.keyCode);
+                if (activeObject && template && Event.current.type == EventType.KeyDown)
+                    InteractivePlayground(view, Event.current.keyCode);
             }
             else
             {
                 InteractiveTemplate(view, Event.current);
             }
 
+            if (Event.current.type == EventType.Repaint)
+                DrawItemHierarchy(activeObject.transform, root);
         }
     }
 
-    void InteractivePlayground(KeyCode key)
+
+
+    void InteractivePlayground(SceneView view, KeyCode key)
     {
         switch (key)
         {
@@ -94,26 +101,29 @@ public class HittSceneInteractive : ScriptableObject
             case KeyCode.LeftArrow: MoveLeft(); break;
             case KeyCode.Delete: Delete(); break;
             default:
-                GameObject g;
 
-                if (template.keyIndex.TryGetValue(key, out g))
+                var obj = template.keyIndex.GetValue(key);
+
+                if (obj != null && obj.prefab)
                 {
-                    active.AssignHitt(activeEntrance, Selection.activeGameObject = (GameObject)PrefabUtility.InstantiatePrefab(g));
+                    template.SetChildren(activeEntrance, activeObject.transform, Selection.activeGameObject = (GameObject)PrefabUtility.InstantiatePrefab(obj.prefab));
                     break;
                 }
                 return;
         }
         Event.current.Use();
+        if (Selection.activeTransform)
+            view.LookAt(Selection.activeTransform.position);
     }
 
 
     void Delete()
     {
-
-        if (active.parent)
+        var p = activeObject.transform.parent;
+        if (p && template.GetItemOf(p) != null)
         {
-            var p = active.parent;
-            p.AssignHitt(active.parentEntrance, null);
+
+            template.SetChildren(template.GetChildren(p).IndexOf(activeObject.transform), p, null);// activeObject.transform.GetSiblingIndex(), p, null);
             Selection.activeGameObject = p.gameObject;
         }
 
@@ -121,28 +131,30 @@ public class HittSceneInteractive : ScriptableObject
 
     void MoveDown()
     {
-        if (!active.parent) { MoveRight(); return; }
+        if (root.gameObject == activeObject) { MoveRight(); return; }
 
         activeEntrance++;
 
         if (activeEntrance >= active.entrances.Length)
         {
-            HittItem g = active;
+            Transform g = activeObject.transform;
 
             do
             {
                 if (!g.parent) break;
-                var idx = g.parentEntrance + 1;
-                if (idx >= g.parent.children.Length)
+                var idx = g.GetSiblingIndex() + 1;
+                if (idx >= g.parent.childCount)
                 {
                     g = g.parent;
                     idx = 0;
                 }
-                g = g.parent.children[idx];
+
+                g = g.parent.GetChild(idx);
             } while (g);
 
             activeEntrance = 0;
             Selection.activeGameObject = g.gameObject;
+
 
         }
 
@@ -150,27 +162,27 @@ public class HittSceneInteractive : ScriptableObject
 
     void MoveUp()
     {
-        if (!active.parent) { return; }
+        if (root.gameObject == activeObject) { return; }
 
         activeEntrance--;
 
         if (activeEntrance < 0)
         {
-            HittItem g = active;
+            Transform g = activeObject.transform;
 
             do
             {
                 if (!g.parent) break;
-                var idx = g.parentEntrance - 1;
+                var idx = g.GetSiblingIndex() - 1;
                 if (idx < 0)
                 {
                     g = g.parent;
-                    idx = g.parent.children.Length - 1;
+                    idx = g.parent.childCount - 1;
                 }
-                g = g.parent.children[idx];
+                g = g.parent.GetChild(idx);
             } while (g);
 
-            activeEntrance = g.entrances.Length - 1;
+            activeEntrance = template.GetItemOf(g).entrances.Length - 1;
             Selection.activeGameObject = g.gameObject;
 
         }
@@ -179,60 +191,36 @@ public class HittSceneInteractive : ScriptableObject
     void MoveRight()
     {
 
-        var p = active.children;
-        var idx = 0;
-        while (idx < p.Length && !p[idx])
-        {
-            idx++;
-        }
+        var p = activeObject.transform;
 
-        if (idx < p.Length)
-            Selection.activeGameObject = p[idx].gameObject;
+        if (p.childCount > 0)
+            Selection.activeGameObject = p.GetChild(0).gameObject;
     }
 
     void MoveLeft()
     {
-        if (active.parent)
+        if (activeObject.transform.parent)
         {
-            Selection.activeGameObject = active.parent.gameObject;
+            Selection.activeGameObject = activeObject.transform.parent.gameObject;
         }
 
     }
 
+    //---------------------------------------------------------------------------------//
+
     [NonSerialized]
-    EntranceTemplate draggedTemplate;
+    GateTags draggedTemplate;
     [NonSerialized]
     Vector3 draggedTemplatePos, draggedTemplateCenter, draggedTemplateNormal;
 
-    Ray mouseRay(Event ev, SceneView view)
-    {
-        var m = Event.current.mousePosition;
-        m.y = -m.y + view.position.height - 16;
-        return view.camera.ScreenPointToRay(m);
-    }
-
-    Vector3 align(Vector3 v)
-    {
-        float x = Math.Abs(v.x), y = Math.Abs(v.y), z = Math.Abs(v.z);
-        if (x > y && x > z)
-            return Vector3.right * v.x;
-        else
-            return y > z ? Vector3.up * v.y : Vector3.forward * v.z;
-    }
-
-    Vector3 snap(Vector3 v)
-    {
-        const float snap = 0.5f; const float invsnap = 1 / snap;
-        return new Vector3(Mathf.Round(v.x * invsnap) * snap, Mathf.Round(v.y * invsnap) * snap, Mathf.Round(v.z * invsnap) * snap);
-    }
 
     void InteractiveTemplate(SceneView view, Event ev)
     {
-        if (!active) return;
+        if (active == null) return;
 
         if (ev.type == EventType.DragUpdated || ev.type == EventType.DragPerform)
         {
-            var data = DragAndDrop.GetGenericData("MittEntrance") as EntranceTemplate;
+            var data = DragAndDrop.GetGenericData("MittEntrance") as GateTags;
             if (data != null)
             {
                 draggedTemplate = data;
@@ -240,18 +228,18 @@ public class HittSceneInteractive : ScriptableObject
                 {
                     float d; RaycastHit hit;
 
-                    Vector3 center = active.transform.TransformPoint(active.center);
+                    Vector3 center = activeObject.transform.TransformPoint(active.center);
                     Vector3 normal = -view.camera.transform.forward;
                     if (!ev.shift)
-                        normal = align(normal);
+                        normal = HittUtility.Align(normal);
 
                     Plane plane = new Plane(normal, center);
-                    Ray ray = mouseRay(ev, view);
+                    Ray ray = HittUtility.MouseRay(ev, view);
                     plane.Raycast(ray, out d);
                     Vector3 point = ray.GetPoint(d);
 
                     if (!ev.shift)
-                        point = snap(point - center) + center;
+                        point = HittUtility.Snap(point - center) + center;
                     if (!(ev.control || ev.command) && Physics.Linecast(point, center, out hit))
                         point = hit.point;
 
@@ -265,13 +253,14 @@ public class HittSceneInteractive : ScriptableObject
                 else
                 {
                     {
-                        Undo.RecordObject(active, "Add new Entrance");
-                        ArrayUtility.Add(ref active.entrances, new Entrance()
+                        Undo.RecordObject(activeObject, "Add new Entrance");
+                        active.AddEntrance(new Entrance()
                         {
-                            position = active.transform.InverseTransformPoint(draggedTemplatePos),
+                            position = activeObject.transform.InverseTransformPoint(draggedTemplatePos),
                             rotation = Quaternion.LookRotation(draggedTemplatePos - draggedTemplateCenter),
-                            tag = draggedTemplate.index
+                            tag = draggedTemplate.hash
                         });
+                        template.Populate();
                     }
                     draggedTemplate = null;
                     DragAndDrop.activeControlID = 0;
@@ -285,7 +274,6 @@ public class HittSceneInteractive : ScriptableObject
 
         if (ev.type == EventType.Repaint)
         {
-            DrawItemHierarchy(active, root);
 
             if (draggedTemplate != null)
             {
@@ -300,29 +288,31 @@ public class HittSceneInteractive : ScriptableObject
         }
     }
 
-    void DrawItemHierarchy(HittItem item, bool recursive)
+    void DrawItemHierarchy(Transform obj, bool recursive)
     {
         // the center
-        if (!item) return;
+        if (obj == null) return;
+        var item = template.objectIndex.GetValue(PrefabUtility.GetPrefabParent(obj.gameObject) as GameObject);
+        if (item == null) return;
 
-        var children = item.children;
-        var entrances = item.entrances;
-        var center = item.center;
-        var count = Math.Min(children.Length, entrances.Length);
-
-        Handles.matrix = item.transform.localToWorldMatrix;
+        Handles.matrix = obj.transform.localToWorldMatrix;
         Handles.color = Color.white;
-        Handles.DrawWireCube(center, Vector3.one * 0.1f);
+        Handles.DrawWireCube(item.center, Vector3.one * 0.1f);
 
         // the line
         if (template)
-            for (int i = 0; i < entrances.Length; i++)
-                template.DrawEntrance(entrances[i], item, i == 0);
+        {
+            if (item.port.tag != 0)
+                template.DrawEntrance(item.port, item, true);
+
+            for (int i = 0; i < item.entrances.Length; i++)
+                template.DrawEntrance(item.entrances[i], item, false);
+        }
 
         // the childs recursive
         if (recursive)
-            for (int i = 0; i < count; i++)
-                DrawItemHierarchy(children[i], true);
+            for (int i = 0; i < obj.childCount; i++)
+                DrawItemHierarchy(obj.GetChild(i), true);
 
     }
 }
