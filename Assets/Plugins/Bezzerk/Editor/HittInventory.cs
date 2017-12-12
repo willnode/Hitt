@@ -49,7 +49,8 @@ public class HittInventory : EditorWindow
         /// </summary>
         public static void MakeGrid(Vector2 itemSize, int count, Action<Rect, int> callback)
         {
-            var width = EditorGUIUtility.currentViewWidth - 17;
+            //  var r = EditorGUILayout.BeginVertical(GUILayout.ExpandHeight(true));
+            var width = EditorGUIUtility.currentViewWidth - 17 - 200;
             int itemPerRow = (int)Mathf.Max(1f, width / itemSize.x);
 
             EditorGUILayout.BeginHorizontal(GUILayout.Height(itemSize.y));
@@ -65,6 +66,7 @@ public class HittInventory : EditorWindow
                 }
             }
             EditorGUILayout.EndHorizontal();
+            //  EditorGUILayout.EndVertical();
         }
 
 
@@ -133,13 +135,18 @@ public class HittInventory : EditorWindow
                 return;
             }
         }
-        EditorGUI.BeginDisabledGroup(root == null);
-        if (GUILayout.Button("Sync", EditorStyles.miniButton, GUILayout.Width(100)))
-            template.Synchronize(root.transform);
+        EditorGUI.BeginDisabledGroup(active == null);
+        if (GUILayout.Button(root ? "Sync" : "Add", EditorStyles.miniButton, GUILayout.Width(100)))
+        {
+            if (root)
+                template.Synchronize(root.transform);
+            else
+                activeObject.AddComponent<Hitt>();
+        }
         EditorGUI.EndDisabledGroup();
         EditorGUILayout.EndHorizontal();
 
-        scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.ExpandHeight(true));
+        //  scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.ExpandHeight(true));
         {
             EditorGUILayout.BeginHorizontal();
             for (int i = 0; i < Styles.tabContent.Length; i++)
@@ -157,7 +164,6 @@ public class HittInventory : EditorWindow
             case 2: EntranceGUI(); break;
         }
 
-        EditorGUILayout.EndScrollView();
     }
 
     void OnSceneGUI(SceneView view)
@@ -210,17 +216,20 @@ public class HittInventory : EditorWindow
         //    }
         //}
 
+        EditorGUILayout.BeginHorizontal();
+
+        scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.ExpandHeight(true));
         Styles.MakeGrid(new Vector2(100, 100), template.items.Length, delegate (Rect r, int i)
         {
 
             var g = template.items[i];
 
-            if (r.Contains(ms))
+            if ((r).Contains(ms + scroll))
             {
                 if (ev.type == EventType.DragPerform || ev.type == EventType.DragUpdated)
                 {
                     var obj = HittUtility.GetPrefabOf(DragAndDrop.objectReferences.FirstOrDefault() as GameObject);
-                    if (obj && !g.prefab && !template.objectIndex.ContainsKey(obj))
+                    if (obj && !g.prefab && !template.objectIndex.ContainsKey(obj.name))
                     {
                         DragAndDrop.visualMode = DragAndDropVisualMode.Link;
                         if (ev.type == EventType.DragPerform)
@@ -244,7 +253,7 @@ public class HittInventory : EditorWindow
                             DragAndDrop.PrepareStartDrag();
                             DragAndDrop.objectReferences = new UnityEngine.Object[] { g.prefab };
                             DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
-                            DragAndDrop.StartDrag("Make Prefab");
+                            DragAndDrop.StartDrag("Prefab Out");
                         }
                     }
                 }
@@ -257,9 +266,17 @@ public class HittInventory : EditorWindow
                     GUI.Label(r, new GUIContent(AssetPreview.GetAssetPreview(g.prefab), g.name), Styles.labelThumb);
 
                     if (activeItem == i)
-                        GUI.Label(r, g.name, Styles.labelThumbName);
+                    {
+                        var r2 = r;
+                        r2.height = 8;
+                        GUI.Box(r2, EditorGUIUtility.whiteTexture);
+                    }
+
+                    GUI.Label(r, g.name, Styles.labelThumbName);
                     if (g.key != KeyCode.None)
                         GUI.Label(r, g.key.ToString(), Styles.labelThumbKey);
+                    if (g.port.tag == 0)
+                        GUI.Label(r, "??", Styles.labelThumbQuestion);
                 }
                 else
                 {
@@ -268,6 +285,67 @@ public class HittInventory : EditorWindow
                 }
             }
         });
+
+        EditorGUILayout.EndScrollView();
+        if (GUILayoutUtility.GetLastRect().Contains(ms))
+        {
+            if (ev.type == EventType.DragPerform || ev.type == EventType.DragUpdated)
+            {
+                DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
+                if (ev.type == EventType.DragPerform)
+                {
+                    foreach (var o in DragAndDrop.objectReferences)
+                    {
+                        var g = HittUtility.GetPrefabOf(o as GameObject);
+                        if (template.GetItemOf(g) == null)
+                        {
+                            var i = new HittItem();
+                            i.AssignPrefab(g);
+                            ArrayUtility.Add(ref template.items, i);
+                        }
+                    }
+                    template.Populate();
+                }
+            }
+        }
+        EditorGUILayout.BeginVertical(GUILayout.Width(200), GUILayout.ExpandHeight(true));
+        {
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("+"))
+                ArrayUtility.Add(ref template.items, new HittItem());
+            if (GUILayout.Button("-")) { }
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.Separator();
+            if (activeItem >= 0)
+            {
+                var g = template.items[activeItem];
+                g.name = EditorGUILayout.DelayedTextField(g.name);
+                g.key = (KeyCode)EditorGUILayout.EnumPopup(g.key);
+                if (GUILayout.Button("Reset Gates"))
+                {
+                    g.port.tag = 0;
+                    g.entrances = new Entrance[] { };
+                    SceneView.RepaintAll();
+                }
+                if (GUILayout.Button("Crop Gates"))
+                {
+                    var n = activeObject.GetComponentInChildren<MeshFilter>();
+                    if (n && n.sharedMesh)
+                    {
+                        var b = n.sharedMesh.bounds;
+                        g.port.position = b.ClosestPoint(g.port.position);
+                        foreach (var e in g.entrances)
+                        {
+                            e.position = b.ClosestPoint(e.position);
+                        }
+                        SceneView.RepaintAll();
+                    }
+                }
+            }
+        }
+        EditorGUILayout.EndVertical();
+
+        EditorGUILayout.EndHorizontal();
     }
 
     #endregion Items

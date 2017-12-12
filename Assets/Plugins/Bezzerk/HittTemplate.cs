@@ -19,7 +19,7 @@ public class HittTemplate : ScriptableObject
     public Dictionary<KeyCode, HittItem> keyIndex = new Dictionary<KeyCode, HittItem>();
 
     [NonSerialized]
-    public Dictionary<GameObject, HittItem> objectIndex = new Dictionary<GameObject, HittItem>();
+    public Dictionary<string, HittItem> objectIndex = new Dictionary<string, HittItem>();
 
     [NonSerialized]
     public Dictionary<int, GateTags> gateIndex = new Dictionary<int, GateTags>();
@@ -51,13 +51,16 @@ public class HittTemplate : ScriptableObject
 
             if (item.prefab != null)
             {
-                if (objectIndex.ContainsKey(item.prefab))
+                if (objectIndex.ContainsKey(item.name))
                 {
-                    Debug.LogWarning("HittTemplate: Duplicate Prefab Found! Fixing.");
-                    item.prefab = null;
+                    Debug.LogWarning("HittTemplate: Duplicate Prefab Name Found! Fixing.");
+                    item.name = item.prefab.name;
+                    while (objectIndex.ContainsKey(item.name))
+                    {
+                        item.name += ":";
+                    }
                 }
-                else
-                    objectIndex[item.prefab] = item;
+                objectIndex[item.name] = item;
             }
         }
 
@@ -71,8 +74,7 @@ public class HittTemplate : ScriptableObject
                 do gate.hash = r.Next();
                 while (gate.hash == 0 || gateIndex.ContainsKey(gate.hash));
             }
-            else
-                gateIndex[gate.hash] = gate;
+            gateIndex[gate.hash] = gate;
         }
     }
 
@@ -83,10 +85,9 @@ public class HittTemplate : ScriptableObject
             gate.DrawWire(e.position, e.rotation, item == null ? item.center : e.position, solid);
     }
 
-    void OnValidate ()
+    void OnValidate()
     {
         Populate();
-        Debug.Log("Ref");
     }
 
 }
@@ -94,7 +95,15 @@ public class HittTemplate : ScriptableObject
 [Serializable]
 public class HittItem
 {
-    public string name { get { return prefab ? prefab.name : string.Empty; } }
+    /// <summary>
+    /// Unique prefab name
+    /// </summary>
+    public string name;
+
+    /// <summary>
+    /// Category name
+    /// </summary>
+    public string category;
 
     /// <summary>
     /// Prefab attached to item
@@ -114,13 +123,13 @@ public class HittItem
     /// port used
     /// </summary>
     public Entrance port = new Entrance();
-    
+
     /// <summary>
     /// List of entrances (
     /// </summary>
     public Entrance[] entrances = new Entrance[0];
 
-    public void AddEntrance (Entrance c)
+    public void AddEntrance(Entrance c)
     {
         if (c == null) throw new ArgumentNullException("c");
 
@@ -133,7 +142,7 @@ public class HittItem
         {
             Array.Resize(ref entrances, entrances.Length + 1);
             entrances[entrances.Length - 1] = c;
-        }        
+        }
     }
 
     public void RemoveEntrance(int index = -1)
@@ -152,6 +161,26 @@ public class HittItem
             Array.Resize(ref entrances, entrances.Length - 1);
         }
     }
+
+    public void AssignPrefab(GameObject g)
+    {
+        if (!g)
+        {
+            center = Vector3.zero;
+            prefab = null;
+            name = string.Empty;
+        }
+        else
+        {
+            var mf = g.GetComponentInChildren<MeshFilter>();
+            if (mf && mf.sharedMesh)
+                center = mf.sharedMesh.bounds.center;
+
+            prefab = g;
+            name = g.name;
+        }
+    }
+
 
 }
 
@@ -189,7 +218,7 @@ public class GateTags
     {
         var r = new Random();
         do hash = r.Next();
-        while (hash == 0);        
+        while (hash == 0);
     }
 
     public void DrawWire(Vector3 pos, Quaternion rot, Vector3 center, bool solid)
@@ -199,7 +228,7 @@ public class GateTags
         var c2 = color;
 
         if (!solid) c2.a *= 0.8f;
-        
+
         Handles.color = c2;
         Handles.DrawLine(center, pos);
         var m = Matrix4x4.TRS(pos, rot, Vector3.one);

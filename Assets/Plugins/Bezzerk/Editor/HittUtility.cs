@@ -28,10 +28,11 @@ public static class HittUtility
             return y > z ? Vector3.up * v.y : Vector3.forward * v.z;
     }
 
-    public static Vector3 Snap(Vector3 v)
+    public static Vector3 Snap(Vector3 v, float sz)
     {
-        const float snap = 0.5f; const float invsnap = 1 / snap;
-        return new Vector3(Mathf.Round(v.x * invsnap) * snap, Mathf.Round(v.y * invsnap) * snap, Mathf.Round(v.z * invsnap) * snap);
+        float invsnap = 1 / sz;
+        return new Vector3(Mathf.Round(v.x * invsnap) * sz, 
+            Mathf.Round(v.y * invsnap) * sz, Mathf.Round(v.z * invsnap) * sz);
     }
 
     public static int Clamp<T>(T[] array, int v)
@@ -65,7 +66,8 @@ public static class HittUtility
 
     public static HittItem GetItemOf(this HittTemplate template, GameObject g)
     {
-        return template.objectIndex.GetValue(GetPrefabOf(g) as GameObject);
+        g = GetPrefabOf(g);
+        return g ? template.objectIndex.GetValue(g.name) : null;
     }
 
     public static HittItem GetItemOf(this HittTemplate template, Transform g)
@@ -91,7 +93,7 @@ public static class HittUtility
         {
             var n = parent.GetChild(i);
             var g = GetPrefabOf(n.gameObject) as GameObject;
-            if (template.objectIndex.GetValue(g) != null)
+            if (g && template.objectIndex.GetValue(g.name) != null)
                 yield return n;
             else if (template.empty == g)
                 yield return emptyasnull ? null : n; // for empty
@@ -153,7 +155,7 @@ public static class HittUtility
             {
                 var i = template.GetChildren(pp).IndexOf(root);
                 var e = r.port; var g = p.entrances[i];
-                root.localRotation = Conjugate (e.rotation * g.rotation);
+                root.localRotation = Conjugate(e.rotation * g.rotation);
                 root.localPosition = g.position + root.localRotation * - e.position;
             }
         }
@@ -165,5 +167,14 @@ public static class HittUtility
                 template.Synchronize(root.GetChild(i), true);
             }
         }
+    }
+
+
+    public static GameObject Instantiate(this HittItem item)
+    {
+        if (!item.prefab) return null;
+        var p = PrefabUtility.InstantiatePrefab(item.prefab) as GameObject;
+        p.name = item.name; // yep
+        return p;
     }
 }
