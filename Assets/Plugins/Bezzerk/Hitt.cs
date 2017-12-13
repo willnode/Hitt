@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+// nothing but a placeholder
 public class Hitt : MonoBehaviour
 {
 
