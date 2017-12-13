@@ -1,12 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using UnityEditor;
 using UnityEngine;
 
 [InitializeOnLoad]
-public class HittSceneInteractive : ScriptableObject
+public partial class HittSceneInteractive : ScriptableObject
 {
 
     // avoid GC
@@ -45,8 +43,6 @@ public class HittSceneInteractive : ScriptableObject
     {
         if (!singleton)
             singleton = this;
-        else if (singleton != this)
-            Debug.LogWarning("SHIT");
     }
 
     void SelectionChanged()
@@ -72,115 +68,31 @@ public class HittSceneInteractive : ScriptableObject
 
     void OnSceneGUI(SceneView view)
     {
-        if (active != null)
-        {
-            if (root)
-            {
-                if (activeObject && template && Event.current.type == EventType.KeyDown)
-                    InteractivePlayground(view, Event.current.keyCode);
-            }
-            //            else
-            {
-                InteractiveTemplate(view, Event.current);
-            }
+        if (active == null) return;
 
-            if (Event.current.type == EventType.Repaint)
-                DrawItemHierarchy(activeObject.transform, root);
-        }
-    }
+        if (root && activeObject && template && Event.current.type == EventType.KeyDown)
+            InteractivePlayground(view, Event.current.keyCode);
 
+        InteractiveTemplate(view, Event.current);
 
-
-    void InteractivePlayground(SceneView view, KeyCode key)
-    {
-        switch (key)
-        {
-            case KeyCode.UpArrow: MoveUp(); break;
-            case KeyCode.DownArrow: MoveDown(); break;
-            case KeyCode.RightArrow: MoveRight(); break;
-            case KeyCode.LeftArrow: MoveLeft(); break;
-            case KeyCode.Delete: Delete(); break;
-            default:
-
-                var obj = template.keyIndex.GetValue(key);
-
-                if (obj != null && obj.prefab)
-                {
-                    template.SetChildren(activeEntrance, activeObject.transform, Selection.activeGameObject = obj.Instantiate());
-                    break;
-                }
-                return;
-        }
-        Event.current.Use();
-        if (Selection.activeTransform)
-            view.LookAt(Selection.activeTransform.position);
-    }
-
-
-    void Delete()
-    {
-        var p = activeObject.transform.parent;
-        if (p && template.GetItemOf(p) != null)
-        {
-
-            template.SetChildren(template.GetChildren(p).IndexOf(activeObject.transform), p, null);// activeObject.transform.GetSiblingIndex(), p, null);
-            Selection.activeGameObject = p.gameObject;
-        }
+        if (Event.current.type == EventType.Repaint)
+            DrawItemHierarchy(activeObject.transform, root);
 
     }
 
-    void MoveDown()
-    {
-        if (root.gameObject == activeObject) { MoveRight(); return; }
 
-        activeEntrance++;
-
-        if (activeEntrance >= active.entrances.Length)
-        {
-
-            activeEntrance = 0;
-
-        }
-
-    }
-
-    void MoveUp()
-    {
-        if (root.gameObject == activeObject) { return; }
-
-        activeEntrance--;
-
-        if (activeEntrance < 0)
-        {
-
-            activeEntrance = active.entrances.Length - 1;
-        }
-    }
-
-    void MoveRight()
-    {
-
-        var p = template.GetChildren(activeObject.transform).ToArray();
-
-        Selection.activeGameObject = p[HittUtility.Clamp(p, activeEntrance)].gameObject;
-    }
-
-    void MoveLeft()
-    {
-        if (activeObject.transform.parent)
-        {
-            Selection.activeGameObject = activeObject.transform.parent.gameObject;
-        }
-
-    }
 
     //---------------------------------------------------------------------------------//
 
     [NonSerialized]
-    GateTags draggedTemplate;
+    GateTags dragTemplate;
     [NonSerialized]
-    Vector3 draggedTemplatePos, draggedTemplateCenter, draggedTemplateNormal;
+    DragStop dragStop;
 
+    struct DragStop
+    {
+        public Vector3 pos, center, normal; 
+    }
 
     void InteractiveTemplate(SceneView view, Event ev)
     {
@@ -191,7 +103,7 @@ public class HittSceneInteractive : ScriptableObject
             var data = DragAndDrop.GetGenericData("MittEntrance") as GateTags;
             if (data != null)
             {
-                draggedTemplate = data;
+                dragTemplate = data;
                 if (ev.type == EventType.DragUpdated)
                 {
                     float d; RaycastHit hit;
@@ -211,9 +123,7 @@ public class HittSceneInteractive : ScriptableObject
                     if (!(ev.control || ev.command) && Physics.Linecast(point, center, out hit))
                         point = hit.point;
 
-                    draggedTemplatePos = point;
-                    draggedTemplateCenter = center;
-                    draggedTemplateNormal = normal;
+                    dragStop = new DragStop() { pos = point, center = center, normal = normal };
 
                     DragAndDrop.visualMode = DragAndDropVisualMode.Link;
                     ev.Use();
@@ -224,13 +134,13 @@ public class HittSceneInteractive : ScriptableObject
                         Undo.RecordObject(activeObject, "Add new Entrance");
                         active.AddEntrance(new Entrance()
                         {
-                            position = activeObject.transform.InverseTransformPoint(draggedTemplatePos),
-                            rotation = HittUtility.Conjugate( activeObject.transform.rotation) * Quaternion.LookRotation(draggedTemplatePos - draggedTemplateCenter),
-                            tag = draggedTemplate.hash
+                            position = activeObject.transform.InverseTransformPoint(dragStop.pos),
+                            rotation = HittUtility.Conjugate(activeObject.transform.rotation) * Quaternion.LookRotation(dragStop.pos - dragStop.center),
+                            tag = dragTemplate.hash
                         });
                         template.Populate();
                     }
-                    draggedTemplate = null;
+                    dragTemplate = null;
                     DragAndDrop.activeControlID = 0;
                     DragAndDrop.AcceptDrag();
                     ev.Use();
@@ -238,19 +148,19 @@ public class HittSceneInteractive : ScriptableObject
             }
         }
         else if (ev.type == EventType.DragExited)
-            draggedTemplate = null;
+            dragTemplate = null;
 
         if (ev.type == EventType.Repaint)
         {
-            if (draggedTemplate != null)
+            if (dragTemplate != null)
             {
-                var r = Mathf.Min(Vector3.Magnitude(draggedTemplatePos - draggedTemplateCenter) * 0.5f, 1);
-                var c = draggedTemplate.color; Handles.color = c;
-                Handles.DrawLine(draggedTemplateCenter, draggedTemplatePos);
+                var r = Mathf.Min(Vector3.Magnitude(dragStop.pos - dragStop.center) * 0.5f, 1);
+                var c = dragTemplate.color; Handles.color = c;
+                Handles.DrawLine(dragStop.center, dragStop.pos);
                 c.a *= 0.5f; Handles.color = c;
-                Handles.DrawWireDisc(draggedTemplateCenter, draggedTemplateNormal, r);
+                Handles.DrawWireDisc(dragStop.center, dragStop.normal, r);
                 c.a *= 0.2f; Handles.color = c;
-                Handles.DrawSolidDisc(draggedTemplateCenter, draggedTemplateNormal, r);
+                Handles.DrawSolidDisc(dragStop.center, dragStop.normal, r);
             }
         }
     }
@@ -272,14 +182,15 @@ public class HittSceneInteractive : ScriptableObject
             if (!recursive && item.port.tag != 0)
                 template.DrawEntrance(item.port, item, true);
 
+            bool flag = recursive && activeObject == obj.gameObject;
             for (int i = 0; i < item.entrances.Length; i++)
-                template.DrawEntrance(item.entrances[i], item, recursive && activeObject == obj.gameObject && i == activeEntrance);
+                template.DrawEntrance(item.entrances[i], item, flag && i == activeEntrance);
         }
 
         // the childs recursive
         if (recursive)
             for (int i = 0; i < obj.childCount; i++)
                 DrawItemHierarchy(obj.GetChild(i), true);
-
     }
+
 }

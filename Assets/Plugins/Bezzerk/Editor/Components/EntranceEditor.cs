@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using UnityEditor;
+﻿using UnityEditor;
 using UnityEngine;
 
 namespace Assets.Plugins.Hitt.Editor
@@ -31,7 +27,8 @@ namespace Assets.Plugins.Hitt.Editor
                 var v = rot.quaternionValue.eulerAngles;
                 EditorGUI.showMixedValue = rot.hasMultipleDifferentValues;
                 EditorGUI.BeginChangeCheck();
-                var v2 = EditorGUI.Vector3Field(r, new GUIContent(rot.displayName), v);
+                var r2 = EditorGUI.PrefixLabel(r, new GUIContent(rot.displayName));
+                var v2 = EditorGUI.Vector3Field(r2, GUIContent.none, v);
                 if (EditorGUI.EndChangeCheck())
                     rot.quaternionValue = Quaternion.Euler(v2);
             }
